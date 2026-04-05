@@ -1,0 +1,67 @@
+// Worktree-aware devcontainer config.
+//
+// /x/workspace — the active directory (worktree or main repo).
+// /x/ml-reentry-torch — the main repo, mounted as a sibling so git worktree
+//   relative paths (e.g., `gitdir: ../ml-reentry-torch/.git/worktrees/...`)
+//   resolve correctly inside the container.
+//
+// Dockerfiles should use WORKDIR /x/workspace.
+{
+  "name": "ml-reentry-torch",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  // Mount the active directory (worktree or main repo) at a static path.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/x/workspace,type=bind",
+  "workspaceFolder": "/x/workspace",
+
+  // Tell Claude Code the host-side workspace path so setup-claude.sh can
+  // create the correct project-key symlink.
+  "containerEnv": {
+    "HOST_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+  },
+
+  "mounts": [
+    // Main repo sibling so .git relative paths resolve.
+    // When opened from the main repo itself, this is the same directory
+    // as the workspace mount — harmless.
+    "source=${localWorkspaceFolder}/../ml-reentry-torch,target=/x/ml-reentry-torch,type=bind",
+    // Claude Code shared config (credentials, settings, CLAUDE.md).
+    "source=${localEnv:HOME}/.claude,target=/mnt/claude/config,type=bind",
+    // Claude Code project state (session history, memory). Separate mount
+    // so the setup script can symlink per-project without touching config.
+    "source=${localEnv:HOME}/.claude/projects,target=/mnt/claude/projects,type=bind"
+  ],
+
+  "runArgs": ["--gpus", "all"],
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  // Ensure the host-side project directory exists before the container starts.
+  "initializeCommand": "mkdir -p \"$HOME/.claude/projects/$(echo \"$PWD\" | tr '/' '-')\"",
+
+  // Custom Dockerfiles should set ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
+  // and run `uv sync` at build time so this becomes a no-op.
+  "postCreateCommand": "uv sync --extra dev",
+
+  // Wire up Claude Code config and project state inside the container.
+  "postStartCommand": ".devcontainer/setup-claude.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "github.copilot",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.analysis.typeCheckingMode": "off"
+      }
+    }
+  }
+}

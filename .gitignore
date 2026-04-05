@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.so
+
+# Virtual environments
+.venv/
+
+# torch.compile debug output
+debug_output/
+torch_compile_debug/
+
+# Generated code captures (keep committed copies in generated/ dirs)
+*.ncu-rep
+
+# Project-specific
+/internal-docs/

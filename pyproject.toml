@@ -1,0 +1,41 @@
+[project]
+name = "ml-reentry-torch"
+version = "0.1.0"
+description = "PyTorch internals: dispatch, torch.compile, custom operators"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.6",
+    "numpy",
+    "torchtune",
+    "torchao",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ipython",
+    "pre-commit",
+    "ruff",
+    "pyright",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tools", "shared", "exp"]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "/opt"
+venv = "venv"
