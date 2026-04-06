@@ -8,6 +8,8 @@ dependencies = [
     "numpy",
     "torchtune",
     "torchao",
+    "matplotlib",
+    "seaborn",
 ]
 
 [project.optional-dependencies]
@@ -18,6 +20,9 @@ dev = [
     "ruff",
     "pyright",
 ]
+
+[project.scripts]
+tracer = "tools.tracer.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
