@@ -1,0 +1,1 @@
+Don't reference anything in `internal-docs/` in code. It will not be committed.
