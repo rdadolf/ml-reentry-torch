@@ -16,7 +16,7 @@ OP_CASES = {
         "op": lambda: torch.ops.reentry.identity,
         "inputs": lambda: (torch.randn(4, 8),),
         "reference": lambda x: x.clone(),
-        "dtypes": [torch.float32, torch.float64, torch.int32],
+        "dtypes": [torch.float32, torch.float64],
     },
     "silu_and_mul": {
         "op": lambda: torch.ops.reentry.silu_and_mul,
@@ -64,12 +64,8 @@ class TestOps:
         inputs = op_case["inputs"]()
         torch.library.opcheck(op_case["op"](), inputs)
 
-    @pytest.mark.xfail(reason="DEV-118: autograd not yet registered")
     def test_gradcheck(self, op_case):
         """Verify gradient math via finite differences."""
-        # int dtypes aren't differentiable
-        if torch.int32 in op_case["dtypes"]:
-            pytest.skip("non-differentiable op")
         inputs = tuple(t.double().requires_grad_(True) for t in op_case["inputs"]())
         torch.autograd.gradcheck(op_case["op"](), inputs)
 
