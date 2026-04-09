@@ -1,37 +1,16 @@
 """Toy model configurations for experiments.
 
 Each model is packaged as a ModelCase: a named tuple of the model and a
-deterministic input generator. Use the catalog at the bottom for discovery.
+deterministic input generator. Use ALL in shared.models for discovery.
 """
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
 
 import torch
 import torch.nn as nn
-from torchtune.models.llama3 import llama3
-from torchtune.modules.transformer import TransformerDecoder
+import torch.nn.functional as F
 
-type InputGenerator = Callable[..., tuple[Any, ...]]
-"""callable(seed=0) -> args tuple for model.forward()"""
-
-
-class ModelCase(NamedTuple):
-    """A model paired with a deterministic input generator."""
-
-    model: nn.Module
-    make_input: InputGenerator
-
-
-def _seeded(fn: Callable[..., tuple[Any, ...]]) -> Callable[..., tuple[Any, ...]]:
-    """Wrap a function so it sets the torch manual seed from a seed= kwarg."""
-
-    def wrapper(*, seed: int = 0) -> tuple[Any, ...]:
-        torch.manual_seed(seed)
-        return fn()
-
-    return wrapper
-
+from shared.models.common import ModelCase, deterministic
 
 # ── MLP ──────────────────────────────────────────────────────────────
 # Dispatch: straightforward linear chain. Every op is a single ATen call
@@ -59,7 +38,7 @@ class MLP(nn.Module):
 def mlp_case() -> ModelCase:
     return ModelCase(
         model=MLP(),
-        make_input=_seeded(lambda: (torch.randn(1, 64),)),
+        make_input=deterministic(lambda: (torch.randn(1, 64),)),
     )
 
 
@@ -96,7 +75,7 @@ class ResidualMLP(nn.Module):
 def residual_mlp_case() -> ModelCase:
     return ModelCase(
         model=ResidualMLP(),
-        make_input=_seeded(lambda: (torch.randn(1, 64),)),
+        make_input=deterministic(lambda: (torch.randn(1, 64),)),
     )
 
 
@@ -135,7 +114,7 @@ class TinyCNN(nn.Module):
 def cnn_case() -> ModelCase:
     return ModelCase(
         model=TinyCNN(),
-        make_input=_seeded(lambda: (torch.randn(1, 1, 16, 16),)),
+        make_input=deterministic(lambda: (torch.randn(1, 1, 16, 16),)),
     )
 
 
@@ -167,7 +146,7 @@ class TinyGRU(nn.Module):
 def gru_case() -> ModelCase:
     return ModelCase(
         model=TinyGRU(),
-        make_input=_seeded(lambda: (torch.randn(1, 8, 32),)),
+        make_input=deterministic(lambda: (torch.randn(1, 8, 32),)),
     )
 
 
@@ -204,7 +183,7 @@ class EmbeddingClassifier(nn.Module):
 def embedding_case() -> ModelCase:
     return ModelCase(
         model=EmbeddingClassifier(),
-        make_input=_seeded(lambda: (torch.randint(0, 256, (1, 10)),)),
+        make_input=deterministic(lambda: (torch.randint(0, 256, (1, 10)),)),
     )
 
 
@@ -222,21 +201,15 @@ def embedding_case() -> ModelCase:
 
 
 class SparseGNNLayer(nn.Module):
-    """Single GCN-style message passing layer: A @ X @ W + b.
-
-    Uses a sparse adjacency matrix for the graph structure and dense
-    linear transforms for node features. This is the core pattern in
-    every GNN framework (PyG, DGL, etc.), stripped to its essentials.
-    """
+    """Single GCN-style message passing layer: A @ X @ W + b."""
 
     def __init__(self, in_features: int = 32, out_features: int = 32):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features)
 
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        # adj: sparse [num_nodes, num_nodes], x: dense [num_nodes, in_features]
         x = torch.sparse.mm(adj, x)  # message passing (sparse @ dense)
-        x = self.linear(x)  # node feature transform (dense)
+        x = self.linear(x)
         return torch.relu(x)
 
 
@@ -260,7 +233,6 @@ class TinyGNN(nn.Module):
 
 
 def _random_sparse_adj(num_nodes: int, density: float = 0.1) -> torch.Tensor:
-    """Generate a random sparse adjacency matrix (COO format)."""
     nnz = int(num_nodes * num_nodes * density)
     row = torch.randint(0, num_nodes, (nnz,))
     col = torch.randint(0, num_nodes, (nnz,))
@@ -274,7 +246,7 @@ def _random_sparse_adj(num_nodes: int, density: float = 0.1) -> torch.Tensor:
 def sparse_gnn_case() -> ModelCase:
     return ModelCase(
         model=TinyGNN(),
-        make_input=_seeded(lambda: (torch.randn(16, 32), _random_sparse_adj(16))),
+        make_input=deterministic(lambda: (torch.randn(16, 32), _random_sparse_adj(16))),
     )
 
 
@@ -305,7 +277,7 @@ def transformer_encoder_layer(
 def transformer_case() -> ModelCase:
     return ModelCase(
         model=transformer_encoder_layer(),
-        make_input=_seeded(lambda: (torch.randn(1, 8, 64),)),
+        make_input=deterministic(lambda: (torch.randn(1, 8, 64),)),
     )
 
 
@@ -320,31 +292,176 @@ def transformer_case() -> ModelCase:
 # or dynamic shape triggers.
 # Optimization: the target architecture. If the dispatch tracer and
 # compile analysis work on this, they work on real models.
+#
+# Local implementation — matches torchtune llama3 architecture but
+# avoids the heavy torchtune/datasets/torchao import chain (~2.6s).
+# Also gives us hooks for swapping in custom ops (e.g. silu_and_mul).
 
 
-def toy_llama(num_layers: int = 2) -> TransformerDecoder:
-    """~107K param llama3 model."""
-    return llama3(
-        vocab_size=256,
-        num_layers=num_layers,
-        num_heads=4,
-        num_kv_heads=2,
-        embed_dim=64,
-        max_seq_len=128,
-        intermediate_dim=128,
-    )
+class RMSNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.scale = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.rms_norm(x.float(), (x.size(-1),), self.scale, self.eps).to(x.dtype)
+
+
+class RotaryPositionalEmbeddings(nn.Module):
+    theta: torch.Tensor
+    cache: torch.Tensor
+
+    def __init__(self, dim: int, max_seq_len: int = 4096, base: int = 10_000):
+        super().__init__()
+        theta = 1.0 / (base ** (torch.arange(0, dim, 2)[: dim // 2].float() / dim))
+        self.register_buffer("theta", theta, persistent=False)
+        seq_idx = torch.arange(max_seq_len, dtype=theta.dtype)
+        idx_theta = torch.einsum("i,j->ij", seq_idx, theta).float()
+        cache = torch.stack([torch.cos(idx_theta), torch.sin(idx_theta)], dim=-1)
+        self.register_buffer("cache", cache, persistent=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [b, s, n_h, h_d]
+        seq_len = x.size(1)
+        rope_cache = self.cache[:seq_len].view(1, seq_len, 1, -1, 2)
+        xshaped = x.float().reshape(*x.shape[:-1], -1, 2)
+        x_out = torch.stack(
+            [
+                xshaped[..., 0] * rope_cache[..., 0]
+                - xshaped[..., 1] * rope_cache[..., 1],
+                xshaped[..., 1] * rope_cache[..., 0]
+                + xshaped[..., 0] * rope_cache[..., 1],
+            ],
+            -1,
+        )
+        return x_out.flatten(3).type_as(x)
+
+
+class SwiGLUFFN(nn.Module):
+    """SwiGLU feedforward: gate (w1+silu) * up (w3), then down (w2)."""
+
+    def __init__(self, dim: int, hidden_dim: int):
+        super().__init__()
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)  # gate
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)  # down
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)  # up
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.w2(F.silu(self.w1(x)) * self.w3(x))
+
+
+class LlamaAttention(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        max_seq_len: int,
+        rope_base: int = 500_000,
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads
+        self.head_dim = embed_dim // num_heads
+        self.q_proj = nn.Linear(embed_dim, num_heads * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(embed_dim, num_kv_heads * self.head_dim, bias=False)
+        self.output_proj = nn.Linear(num_heads * self.head_dim, embed_dim, bias=False)
+        self.rope = RotaryPositionalEmbeddings(
+            self.head_dim, max_seq_len, base=rope_base
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, s, _ = x.shape
+        q = self.q_proj(x).view(b, s, self.num_heads, self.head_dim)
+        k = self.k_proj(x).view(b, s, self.num_kv_heads, self.head_dim)
+        v = self.v_proj(x).view(b, s, self.num_kv_heads, self.head_dim)
+
+        q = self.rope(q).transpose(1, 2)  # [b, n_h, s, h_d]
+        k = self.rope(k).transpose(1, 2)
+        v = v.transpose(1, 2)
+
+        # GQA: expand kv heads to match query heads
+        if self.num_heads != self.num_kv_heads:
+            q_per_kv = self.num_heads // self.num_kv_heads
+            k = (
+                k.unsqueeze(2)
+                .expand(b, self.num_kv_heads, q_per_kv, s, self.head_dim)
+                .flatten(1, 2)
+            )
+            v = (
+                v.unsqueeze(2)
+                .expand(b, self.num_kv_heads, q_per_kv, s, self.head_dim)
+                .flatten(1, 2)
+            )
+
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        return self.output_proj(out.transpose(1, 2).contiguous().view(b, s, -1))
+
+
+class LlamaBlock(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        intermediate_dim: int,
+        max_seq_len: int,
+    ):
+        super().__init__()
+        self.attn = LlamaAttention(embed_dim, num_heads, num_kv_heads, max_seq_len)
+        self.mlp = SwiGLUFFN(embed_dim, intermediate_dim)
+        self.sa_norm = RMSNorm(embed_dim)
+        self.mlp_norm = RMSNorm(embed_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.attn(self.sa_norm(x))
+        x = x + self.mlp(self.mlp_norm(x))
+        return x
+
+
+class ToyLlama(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int = 256,
+        embed_dim: int = 64,
+        num_layers: int = 2,
+        num_heads: int = 4,
+        num_kv_heads: int = 2,
+        intermediate_dim: int = 128,
+        max_seq_len: int = 128,
+    ):
+        super().__init__()
+        self.tok_embeddings = nn.Embedding(vocab_size, embed_dim)
+        self.layers = nn.ModuleList(
+            [
+                LlamaBlock(
+                    embed_dim, num_heads, num_kv_heads, intermediate_dim, max_seq_len
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.norm = RMSNorm(embed_dim)
+        self.output = nn.Linear(embed_dim, vocab_size, bias=False)
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        x = self.tok_embeddings(tokens)
+        for layer in self.layers:
+            x = layer(x)
+        return self.output(self.norm(x))
 
 
 def toy_llama_case() -> ModelCase:
     return ModelCase(
-        model=toy_llama(num_layers=1),
-        make_input=_seeded(lambda: (torch.randint(0, 256, (1, 16)),)),
+        model=ToyLlama(num_layers=1),
+        make_input=deterministic(lambda: (torch.randint(0, 256, (1, 16)),)),
     )
 
 
 # ── Catalog ─────────────────────────────────────────────────────────
 
-ALL_CASES: dict[str, Callable[[], ModelCase]] = {
+CATALOG: dict[str, Callable[[], ModelCase]] = {
     "mlp": mlp_case,
     "residual_mlp": residual_mlp_case,
     "cnn": cnn_case,

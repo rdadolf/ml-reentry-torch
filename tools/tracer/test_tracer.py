@@ -5,7 +5,8 @@ Run: pytest tools/tracer/test_tracer.py -v
 
 import torch
 
-from shared.models import ALL_CASES, MLP, ModelCase
+from shared.models import ALL, ModelCase, deterministic
+from shared.models.catalog import MLP
 from tools.tracer import DispatchTracer
 
 
@@ -21,12 +22,12 @@ class TestDispatchSmoke:
     """Verify that the tracer captures ops for every model without crashing."""
 
     def test_all_models_produce_events(self) -> None:
-        for name, make_case in ALL_CASES.items():
+        for name, make_case in ALL.items():
             tracer = _trace(make_case())
             assert len(tracer.trace.events) > 0, f"{name}: no dispatch events"
 
     def test_events_have_op_names(self) -> None:
-        tracer = _trace(ModelCase(MLP(), lambda seed=0: (torch.randn(1, 64),)))
+        tracer = _trace(ModelCase(MLP(), deterministic(lambda: (torch.randn(1, 64),))))
         for event in tracer.trace.events:
             assert event.op, "event missing op"
             assert "::" in event.op, f"unexpected op format: {event.op}"
@@ -34,7 +35,7 @@ class TestDispatchSmoke:
     def test_json_roundtrips(self) -> None:
         import json
 
-        tracer = _trace(ModelCase(MLP(), lambda seed=0: (torch.randn(1, 64),)))
+        tracer = _trace(ModelCase(MLP(), deterministic(lambda: (torch.randn(1, 64),))))
         data = json.loads(tracer.trace.to_json())
         assert len(data) == len(tracer.trace.events)
         assert all("op" in e for e in data)
@@ -42,13 +43,13 @@ class TestDispatchSmoke:
         assert all("outputs" in e for e in data)
 
     def test_summary_is_nonempty(self) -> None:
-        tracer = _trace(ModelCase(MLP(), lambda seed=0: (torch.randn(1, 64),)))
+        tracer = _trace(ModelCase(MLP(), deterministic(lambda: (torch.randn(1, 64),))))
         summary = tracer.trace.summary()
         assert len(summary) > 0
         assert "aten::" in summary
 
     def test_deterministic_input(self) -> None:
-        for name, make_case in ALL_CASES.items():
+        for name, make_case in ALL.items():
             case = make_case()
             a = case.make_input(seed=42)
             b = case.make_input(seed=42)

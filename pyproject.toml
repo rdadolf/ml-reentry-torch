@@ -6,8 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "torch>=2.6",
     "numpy",
-    "torchtune",
-    "torchao",
     "matplotlib",
     "seaborn",
 ]
@@ -23,6 +21,7 @@ dev = [
 
 [project.scripts]
 tracer = "tools.tracer.__main__:main"
+canal = "tools.canal.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

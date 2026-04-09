@@ -11,7 +11,7 @@ import warnings
 
 import torch
 
-from shared.models import ALL_CASES
+from shared.models import ALL
 from tools.tracer import CompiledDispatchTracer, DispatchTracer
 
 warnings.filterwarnings("ignore")
@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 def main() -> None:
     rows: list[tuple[str, int, int, int, int, set[str]]] = []
 
-    for name, make_case in ALL_CASES.items():
+    for name, make_case in ALL.items():
         torch._dynamo.reset()
         with torch.device("cuda"):
             case = make_case()

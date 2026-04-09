@@ -18,3 +18,4 @@ torch_compile_debug/
 
 # Project-specific
 /internal-docs/
+canal_output/
