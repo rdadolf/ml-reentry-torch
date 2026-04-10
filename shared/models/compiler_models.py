@@ -15,18 +15,15 @@ from shared.models.common import ModelCase, deterministic
 
 
 class PointwiseChain(nn.Module):
-    """Linear + ReLU chain. Baseline for fusion."""
-
-    def __init__(self, dim: int = 64):
-        super().__init__()
-        self.l1 = nn.Linear(dim, dim)
-        self.l2 = nn.Linear(dim, dim)
-        self.l3 = nn.Linear(dim, dim)
+    """Pure pointwise chain. Baseline for fusion."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.l1(x))
-        x = F.relu(self.l2(x))
-        return self.l3(x)
+        x = F.relu(x)
+        x = x + 1
+        x = x * 2
+        x = F.relu(x)
+        x = x - 0.5
+        return x
 
 
 def pointwise_chain_case() -> ModelCase:
@@ -86,17 +83,19 @@ class DataDependentBranch(nn.Module):
         x = x * 2
         if x.sum() > 0:
             x = x + 1
+        x = x * 3
         return x
 
 
 def data_dependent_branch_case() -> ModelCase:
     return ModelCase(
         model=DataDependentBranch(),
-        make_input=deterministic(lambda: (torch.randn(2, 32),)),
+        # Use ones so the branch condition is always True and the break fires
+        make_input=deterministic(lambda: (torch.ones(2, 32),)),
     )
 
 
-class DynamicShapeCat(nn.Module):
+class DynamicShape(nn.Module):
     """Dynamic shapes from data-dependent masking."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -105,25 +104,10 @@ class DynamicShapeCat(nn.Module):
         return filtered.sum().unsqueeze(0)
 
 
-def dynamic_shape_cat_case() -> ModelCase:
+def dynamic_shape_case() -> ModelCase:
     return ModelCase(
-        model=DynamicShapeCat(),
+        model=DynamicShape(),
         make_input=deterministic(lambda: (torch.randn(4, 32),)),
-    )
-
-
-class InplaceOnInput(nn.Module):
-    """In-place mutation of input tensor."""
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x += 1
-        return x * 2
-
-
-def inplace_on_input_case() -> ModelCase:
-    return ModelCase(
-        model=InplaceOnInput(),
-        make_input=deterministic(lambda: (torch.randn(2, 32),)),
     )
 
 
@@ -215,21 +199,18 @@ def custom_llama_ffn_case() -> ModelCase:
 
 
 class CustomPointwiseChain(nn.Module):
-    """PointwiseChain with custom identity inserted mid-chain."""
-
-    def __init__(self, dim: int = 64):
-        super().__init__()
-        self.l1 = nn.Linear(dim, dim)
-        self.l2 = nn.Linear(dim, dim)
-        self.l3 = nn.Linear(dim, dim)
+    """PointwiseChain with custom identity splitting the chain."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         from shared.custom_ops.register import identity
 
-        x = F.relu(self.l1(x))
+        x = F.relu(x)
+        x = x + 1
         x = identity(x)  # fusion barrier
-        x = F.relu(self.l2(x))
-        return self.l3(x)
+        x = x * 2
+        x = F.relu(x)
+        x = x - 0.5
+        return x
 
 
 def custom_pointwise_chain_case() -> ModelCase:

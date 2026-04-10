@@ -51,10 +51,10 @@ def run_one(exp: ExperimentConfig) -> ExperimentResult:
             f"got {len(exp.models)}"
         )
 
-    # Resolve models
+    # Resolve models and move to target device
     cases = [resolve_model(m) for m in exp.models[: analysis.model_count]]
     for case in cases:
-        case.model.eval()
+        case.model.eval().to(exp.device)
 
     # Determine which collectors are needed (keyed by (model_idx, collector_name))
     needed: set[tuple[int, str]] = set()

@@ -104,7 +104,7 @@ def test_breaks_clean_model():
     exp = ExperimentConfig(name="test_breaks", models=("mlp",), analysis="breaks")
     result = run_one(exp)
     assert result.result.graph_break_count == 0
-    assert result.result.categories == {}
+    assert result.result.breaks == []
 
 
 def test_breaks_with_control_flow():
@@ -115,7 +115,7 @@ def test_breaks_with_control_flow():
             return x - 1
 
     def make_case():
-        return ModelCase(BranchModel(), deterministic(lambda: (torch.randn(2, 4),)))
+        return ModelCase(BranchModel(), deterministic(lambda: (torch.ones(2, 4),)))
 
     exp = ExperimentConfig(
         name="test_breaks_cf", models=(make_case,), analysis="breaks"

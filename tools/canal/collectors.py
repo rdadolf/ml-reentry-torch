@@ -89,6 +89,7 @@ class ExplainCollector:
                 )
                 for br in explanation.break_reasons
             ],
+            graphs=[g.print_readable(False) for g in explanation.graphs],
         )
 
 

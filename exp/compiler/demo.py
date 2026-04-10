@@ -29,7 +29,7 @@ EXPERIMENTS = [
     # Breaks on a model with graph breaks
     experiment(
         lambda: ModelCase(
-            GraphBreakModel(), deterministic(lambda: (torch.randn(2, 4),))
+            GraphBreakModel(), deterministic(lambda: (torch.ones(2, 4),))
         ),
         name="control_flow",
         analysis="breaks",

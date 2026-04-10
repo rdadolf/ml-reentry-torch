@@ -50,6 +50,7 @@ class ExplainData:
     graph_break_count: int
     op_count: int
     break_reasons: list[BreakReason] = field(default_factory=list)
+    graphs: list[str] = field(default_factory=list)  # printed FX graphs
 
 
 # ── Analysis result types ───────────────────────────────────────────
@@ -77,23 +78,23 @@ class CodegenResult:
 
 
 @dataclass
-class CategorizedBreak:
-    """A graph break with a category label."""
+class Break:
+    """A single graph break."""
 
-    reason: str
-    category: str  # control_flow, side_effect, unsupported_op, etc.
+    type: str  # first line of reason (the gb_type label)
+    reason: str  # full reason string
     user_stack: list[str] = field(default_factory=list)
 
 
 @dataclass
 class BreaksResult:
-    """Categorized graph break report."""
+    """Graph break report."""
 
     graph_count: int
     graph_break_count: int
     op_count: int
-    breaks: list[CategorizedBreak] = field(default_factory=list)
-    categories: dict[str, int] = field(default_factory=dict)
+    breaks: list[Break] = field(default_factory=list)
+    graphs: list[str] = field(default_factory=list)
 
 
 @dataclass
