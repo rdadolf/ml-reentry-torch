@@ -210,18 +210,55 @@ def _render_fusion(result: dict) -> str:
 
 
 def _render_passes(result: dict) -> str:
-    lines = []
+    entries = result.get("entries", [])
     total = result.get("total", 0)
-    active = result.get("active_count", 0)
-    lines.append(f"passes: {active} active / {total} total")
+    changed = result.get("changed_count", 0)
+    total_matches = result.get("total_matches", 0)
 
-    passes = result.get("passes", [])
-    active_passes = [p for p in passes if p.get("active")]
-    if active_passes:
-        lines.append("active passes:")
-        for p in active_passes:
-            lines.append(f"  [{p['category']}] {p['name']}")
+    # Column widths — CHILD_W chosen so child categories
+    # align with parent categories (2 + NAME_W = 4 + CHILD_W)
+    NAME_W = 52
+    CHILD_W = NAME_W - 2
+    CAT_W = 22
 
+    lines: list[str] = []
+    current_subsystem = None
+
+    for e in entries:
+        sub = e.get("subsystem") or ""
+        if sub != current_subsystem:
+            current_subsystem = sub
+            lines.append(f"  {sub}")
+
+        delta = "Δ" if e.get("changed") else " "
+        cat = e.get("category", "")
+        name = e.get("name", "")
+        idx = e.get("order", "")
+        mc = e.get("match_count")
+        pc = e.get("pattern_count")
+
+        suffix = ""
+        if mc is not None and pc is not None:
+            suffix = f"{mc} matches ({pc} patterns)"
+        elif mc is not None:
+            suffix = f"{mc} matches"
+        elif pc is not None:
+            suffix = f"({pc} patterns)"
+
+        label = f"[{idx}] {name}"
+        lines.append(f"{delta} {label:<{NAME_W}s} {cat:<{CAT_W}s} {suffix}")
+
+        for p in e.get("patterns", []):
+            pname = p["name"]
+            pcat = p["category"]
+            pcount = p["count"]
+            cnt = f" x{pcount}" if pcount > 1 else ""
+            plabel = f"{pname}{cnt}"
+            lines.append(f"    {plabel:<{CHILD_W}s} {pcat}")
+
+    lines.append(
+        f"  Total: {total} passes, {changed} changed, {total_matches} pattern matches"
+    )
     return "\n".join(lines)
 
 
@@ -298,10 +335,20 @@ def _verbose_fusion(result: dict) -> str:
 
 def _verbose_passes(result: dict) -> str:
     lines = []
-    for p in result.get("passes", []):
-        status = "active" if p.get("active") else "      "
-        lines.append(f"  [{p['category']:>10s}] {status} {p['name']}")
-    return "\n".join(lines) if lines else "(no passes found)"
+    entries = result.get("entries", [])
+    changed = [e for e in entries if e.get("changed")]
+    if not changed:
+        return "(no passes changed the graph)"
+    for e in changed:
+        sub = e.get("subsystem") or ""
+        lines.append(f"[{e['order']}] {e['name']} ({sub})")
+        diff = e.get("diff")
+        if diff:
+            lines.append(diff.rstrip())
+        else:
+            lines.append("  (changed but no diff available)")
+        lines.append("")
+    return "\n".join(lines)
 
 
 # ── Registry ────────────────────────────────────────────────────────

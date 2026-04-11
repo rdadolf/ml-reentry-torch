@@ -116,21 +116,60 @@ class FusionResult:
 
 
 @dataclass
-class InductorPass:
-    """A single Inductor optimization pass."""
+class PassLogEntry:
+    """Raw pass observation from the collector (includes full graph text)."""
 
     name: str
-    category: str  # pre_grad, post_grad, scheduling
-    active: bool
+    subsystem: str | None
+    order: int
+    parent_order: int | None  # order of enclosing GTO, None if top-level
+    before_graph: str
+    after_graph: str
+    changed: bool
+    match_count: int | None = None
+    patterns: list[PatternInfo] = field(default_factory=list)
+
+
+@dataclass
+class PassLogData:
+    """Raw output from the pass observer collector."""
+
+    entries: list[PassLogEntry] = field(default_factory=list)
+
+
+@dataclass
+class PatternInfo:
+    """A named pattern within a PatternMatcherPass."""
+
+    name: str  # handler name or "<anonymous>"
+    category: str  # Graph, Replacement, Lowering
+    count: int  # how many entries with this name
+
+
+@dataclass
+class PassEntry:
+    """Record of a single pass execution."""
+
+    name: str
+    subsystem: str | None
+    order: int
+    changed: bool
+    category: str  # "Graph Pass", "Module Pass", "Pattern Matcher Pass"
+    match_count: int | None = None
+    pattern_count: int | None = None  # total patterns in a PatternMatcherPass
+    patterns: list[PatternInfo] = field(default_factory=list)
+    # Only stored for changed passes to keep JSON reasonable
+    diff: str | None = None
 
 
 @dataclass
 class PassesResult:
-    """Inductor pass enumeration."""
+    """Inductor pass observation report."""
 
-    passes: list[InductorPass]
-    total: int
-    active_count: int
+    entries: list[PassEntry] = field(default_factory=list)
+    total: int = 0
+    changed_count: int = 0
+    total_matches: int = 0
 
 
 # ── Top-level experiment result ─────────────────────────────────────
