@@ -13,7 +13,7 @@ from collections import Counter
 
 import torch
 
-from shared.models import ALL, ModelCase
+from shared.models import ALL_MODELS, ModelCase
 from tools.tracer import CompiledDispatchTracer, DispatchTracer
 
 
@@ -54,8 +54,8 @@ def main() -> None:
     parser.add_argument(
         "model",
         nargs="?",
-        choices=ALL.keys(),
-        help="model name from ALL",
+        choices=ALL_MODELS.keys(),
+        help="model name from ALL_MODELS",
     )
     parser.add_argument(
         "--gpu", action="store_true", help="place model and inputs on CUDA"
@@ -78,13 +78,13 @@ def main() -> None:
 
     if args.list or args.model is None:
         print("Available models:")
-        for name in ALL:
+        for name in ALL_MODELS:
             print(f"  {name}")
         raise SystemExit(0)
 
     device = "cuda" if args.gpu else "cpu"
     with torch.device(device):
-        case = ALL[args.model]()
+        case = ALL_MODELS[args.model]()
         tracer = _trace(case, compile=args.compile)
 
     if args.human:

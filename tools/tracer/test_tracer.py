@@ -5,7 +5,7 @@ Run: pytest tools/tracer/test_tracer.py -v
 
 import torch
 
-from shared.models import ALL, ModelCase, deterministic
+from shared.models import TEST_MODELS, ModelCase, deterministic
 from shared.models.catalog import MLP
 from tools.tracer import DispatchTracer
 
@@ -22,7 +22,7 @@ class TestDispatchSmoke:
     """Verify that the tracer captures ops for every model without crashing."""
 
     def test_all_models_produce_events(self) -> None:
-        for name, make_case in ALL.items():
+        for name, make_case in TEST_MODELS.items():
             tracer = _trace(make_case())
             assert len(tracer.trace.events) > 0, f"{name}: no dispatch events"
 
@@ -49,7 +49,7 @@ class TestDispatchSmoke:
         assert "aten::" in summary
 
     def test_deterministic_input(self) -> None:
-        for name, make_case in ALL.items():
+        for name, make_case in TEST_MODELS.items():
             case = make_case()
             a = case.make_input(seed=42)
             b = case.make_input(seed=42)

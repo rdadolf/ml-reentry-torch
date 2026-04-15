@@ -18,7 +18,7 @@ from pathlib import Path
 
 import torch
 
-from shared.models import ALL
+from shared.models import ALL_MODELS
 from tools.tracer import CompiledDispatchTracer, DispatchTracer
 
 TRACE_DIR = Path(__file__).parent / "traces"
@@ -26,7 +26,7 @@ MODELS = ["custom_silu_ffn", "silu_ffn"]
 
 
 def trace_eager(model_name: str) -> DispatchTracer:
-    case = ALL[model_name]()
+    case = ALL_MODELS[model_name]()
     case.model.eval()
     tracer = DispatchTracer()
     with torch.no_grad(), tracer:
@@ -35,7 +35,7 @@ def trace_eager(model_name: str) -> DispatchTracer:
 
 
 def trace_compiled(model_name: str) -> CompiledDispatchTracer:
-    case = ALL[model_name]()
+    case = ALL_MODELS[model_name]()
     case.model.eval()
     compiled = torch.compile(case.model)
     with torch.no_grad():

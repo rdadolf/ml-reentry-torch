@@ -9,9 +9,9 @@ from tools.canal.config import ExperimentConfig
 
 
 def _get_catalog() -> dict:
-    from shared.models import ALL
+    from shared.models import ALL_MODELS
 
-    return ALL
+    return ALL_MODELS
 
 
 def _auto_name(models: tuple[str | Callable, ...], analysis: str) -> str:

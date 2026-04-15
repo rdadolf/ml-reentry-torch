@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from shared.models import ALL, ModelCase, deterministic
+from shared.models import TEST_MODELS, ModelCase, deterministic
 from tools.canal.config import ExperimentConfig, load_config
 from tools.canal.runner import resolve_model, run_one
 from tools.canal.types import ExperimentResult
@@ -139,7 +139,7 @@ def test_result_json_roundtrip():
 # ── All catalog models ──────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("model_key", list(ALL.keys()))
+@pytest.mark.parametrize("model_key", list(TEST_MODELS.keys()))
 def test_fx_all_models(model_key):
     """Every catalog model should run without crashing."""
     exp = ExperimentConfig(name=f"test_{model_key}", models=(model_key,), analysis="fx")

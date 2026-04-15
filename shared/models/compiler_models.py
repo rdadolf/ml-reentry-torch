@@ -163,6 +163,58 @@ def custom_silu_ffn_case() -> ModelCase:
     )
 
 
+class CustomPySiluFFN(nn.Module):
+    """SwiGLU with pure-Python custom_op silu_and_mul_py."""
+
+    def __init__(self, dim: int = 64, hidden_dim: int = 128):
+        super().__init__()
+        self.norm = RMSNorm(dim)
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+        self.out = nn.Linear(dim, dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        from shared.custom_ops.register import silu_and_mul_py
+
+        h = self.norm(x)
+        h = self.w2(silu_and_mul_py(self.w1(h), self.w3(h)))
+        return self.out(h + x)
+
+
+def custom_py_silu_ffn_case() -> ModelCase:
+    return ModelCase(
+        model=CustomPySiluFFN(),
+        make_input=deterministic(lambda: (torch.randn(1, 8, 64),)),
+    )
+
+
+class CustomTritonSiluFFN(nn.Module):
+    """SwiGLU with triton_op silu_and_mul_triton."""
+
+    def __init__(self, dim: int = 64, hidden_dim: int = 128):
+        super().__init__()
+        self.norm = RMSNorm(dim)
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+        self.out = nn.Linear(dim, dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        from shared.custom_ops.register import silu_and_mul_triton
+
+        h = self.norm(x)
+        h = self.w2(silu_and_mul_triton(self.w1(h), self.w3(h)))
+        return self.out(h + x)
+
+
+def custom_triton_silu_ffn_case() -> ModelCase:
+    return ModelCase(
+        model=CustomTritonSiluFFN(),
+        make_input=deterministic(lambda: (torch.randn(1, 8, 64),)),
+    )
+
+
 class _CustomSwiGLUFFN(nn.Module):
     """Drop-in SwiGLUFFN replacement using silu_and_mul custom op."""
 

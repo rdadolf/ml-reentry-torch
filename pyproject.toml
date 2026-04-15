@@ -5,6 +5,7 @@ description = "PyTorch internals: dispatch, torch.compile, custom operators"
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.6",
+    "triton",
     "numpy",
     "matplotlib",
     "seaborn",

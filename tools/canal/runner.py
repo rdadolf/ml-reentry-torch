@@ -11,7 +11,7 @@ from typing import Any
 
 import torch
 
-from shared.models import ALL, ModelCase
+from shared.models import ALL_MODELS, ModelCase
 from tools.canal.analyzers import ANALYZERS
 from tools.canal.collectors import COLLECTORS
 from tools.canal.config import ExperimentConfig
@@ -21,7 +21,7 @@ from tools.canal.types import ExperimentResult
 def resolve_model(source: str | Callable) -> ModelCase:
     """Resolve a model source to a ModelCase."""
     if isinstance(source, str):
-        return ALL[source]()
+        return ALL_MODELS[source]()
     result = source()
     if isinstance(result, ModelCase):
         return result
